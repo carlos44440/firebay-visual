@@ -1,0 +1,203 @@
+import streamlit as st
+from streamlit.components.v1 import html
+import pandas as pd
+from datetime import datetime, timedelta
+
+# --- CONFIGURACIÓN DE PÁGINA ---
+# Usa el tema oscuro, ideal para paneles de monitoreo de alerta
+st.set_page_config(
+    page_title="FireBay: Monitoreo de Incendios Aysén",
+    page_icon="🔥",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Colores y estilos (para darle un toque profesional)
+# Usaremos clases personalizadas en Markdown para los indicadores de riesgo
+st.markdown("""
+    <style>
+    /* Fuente Inter para mejor legibilidad */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    
+    body {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    .st-emotion-cache-1cypcdb { /* Contenedor principal para el título */
+        padding-top: 1rem;
+    }
+    
+    .risk-card {
+        border-radius: 10px;
+        padding: 15px;
+        color: white;
+        text-align: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        transition: transform 0.3s ease;
+    }
+    .risk-card:hover {
+        transform: translateY(-5px);
+    }
+    .risk-low { background-color: #28a745; } /* Verde */
+    .risk-moderate { background-color: #ffc107; color: #333 !important; } /* Amarillo */
+    .risk-high { background-color: #fd7e14; } /* Naranja */
+    .risk-extreme { background-color: #dc3545; } /* Rojo */
+    .kpi-label { font-size: 14px; margin-bottom: 5px; opacity: 0.8; }
+    .kpi-value { font-size: 32px; font-weight: 800; }
+    </style>
+""", unsafe_allow_html=True)
+
+
+# --- FUNCIONES DE VISUALIZACIÓN ---
+
+def display_windy_map(lat, lon, zoom, overlay, height=600):
+    """Genera y muestra el iframe del mapa de Windy."""
+    st.subheader("Mapa Interactivo de Condiciones Climáticas (Windy)")
+    
+    # 1. Construir la URL completa
+    windy_url = (
+        "https://embed.windy.com/embed2.html?"
+        f"lat={lat}&lon={lon}&zoom={zoom}&overlay={overlay}"
+        "&menu=&message=true&marker=&calendar=&pressure=&type=map&location=coordinates"
+    )
+    
+    # 2. Crear el código HTML del IFRAME
+    iframe_code = f"""
+    <iframe 
+        width="100%" 
+        height="{height}" 
+        src="{windy_url}" 
+        frameborder="0" 
+        allowfullscreen="true"
+        style="border-radius: 10px;">
+    </iframe>
+    """
+    # 3. Mostrar el mapa usando el componente HTML de Streamlit
+    html(iframe_code, height=height + 20)
+    st.caption(f"📍 Coordenadas: {lat}, {lon} | Capa Activa: {overlay}")
+
+def display_kpi_card(title, value, unit, risk_level):
+    """Muestra una tarjeta KPI con estilo de riesgo."""
+    
+    # Asigna la clase CSS según el nivel de riesgo
+    class_map = {
+        "BAJO": "risk-low",
+        "MODERADO": "risk-moderate",
+        "ALTO": "risk-high",
+        "EXTREMO": "risk-extreme"
+    }
+    css_class = class_map.get(risk_level, "risk-low")
+    
+    st.markdown(f"""
+        <div class="risk-card {css_class}">
+            <div class="kpi-label">{title} ({risk_level})</div>
+            <div class="kpi-value">{value} {unit}</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+
+# --- BARRA LATERAL (Filtros y Navegación) ---
+
+st.sidebar.header("FireBay | Bahía Exploradores")
+st.sidebar.markdown("---")
+
+# 1. Filtros de Fecha/Tiempo
+st.sidebar.subheader("📅 Rango de Monitoreo")
+forecast_date = st.sidebar.date_input(
+    "Fecha del Pronóstico", 
+    datetime.now().date() + timedelta(days=1)
+)
+
+st.sidebar.selectbox(
+    "Modelo de Pronóstico",
+    ["GFS (Global)", "ICON-EU (Europa/Placeholder)"],
+    index=0
+)
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("📡 Capas de Datos")
+selected_overlay = st.sidebar.selectbox(
+    "Seleccionar Capa de Windy",
+    ["Viento (wind)", "Lluvia (rain)", "Temperatura (temp)", "Riesgo de Incendio (fire danger)"],
+    index=3,
+    format_func=lambda x: x.split('(')[0].strip()
+)
+# Extrae el código de la capa para el URL de Windy
+overlay_code = selected_overlay.split('(')[1].replace(')', '')
+
+
+# --- ÁREA PRINCIPAL ---
+
+st.header("Dashboard Operacional FireBay")
+st.markdown("Monitoreo de riesgo de incendio en la Región de Aysén, Bahía Exploradores, Chile.")
+
+
+# --- 1. Indicadores Clave de Riesgo (KPIs) ---
+st.subheader("🔥 Índice de Peligro (FWI & Meteorología)")
+
+col1, col2, col3, col4 = st.columns(4)
+
+# Estos son valores PLACEHOLDER, que se llenarán con los datos reales del FWI de Copernicus
+with col1:
+    display_kpi_card("FWI (Índice Incendio)", 45.3, "", "EXTREMO") # Valor de ejemplo FWI > 38
+    
+with col2:
+    # Placeholder para datos de la API Windy de un punto
+    display_kpi_card("Humedad Relativa Mínima", 22.5, "%", "ALTO") 
+
+with col3:
+    display_kpi_card("Velocidad Máxima del Viento", 35, "km/h", "ALTO") 
+
+with col4:
+    display_kpi_card("Precipitación Acumulada (3h)", 0.0, "mm", "EXTREMO") 
+
+
+st.markdown("---")
+
+# --- 2. Mapa Interactivo de Windy ---
+# Variables de configuración del mapa (Bahía Exploradores, Aysén)
+lat = -46.31050588037077
+lon = -73.42610705801674
+zoom = 10 
+
+display_windy_map(lat, lon, zoom, overlay_code)
+
+
+st.markdown("---")
+
+
+# --- 3. Análisis Satelital y Tendencias Históricas (Futuras Implementaciones) ---
+st.subheader("🛰️ Análisis de Datos y Tendencias")
+
+col_left, col_right = st.columns(2)
+
+with col_left:
+    st.info("💡 **Funcionalidad Pendiente:** Gráfico de Tendencia Meteorológica y FWI (Se llenará con datos de la Point Forecast API de Windy o FWI calculado).")
+    
+    # Placeholder para la gráfica
+    mock_data = {
+        'Tiempo': pd.to_datetime([datetime.now() + timedelta(hours=i*3) for i in range(8)]),
+        'Temperatura (°C)': [15, 17, 19, 21, 18, 16, 14, 13],
+        'Humedad (%)': [75, 68, 55, 45, 50, 60, 70, 78],
+        'FWI (Índice)': [10, 15, 25, 35, 30, 20, 15, 12]
+    }
+    df_mock = pd.DataFrame(mock_data).set_index('Tiempo')
+    
+    st.line_chart(df_mock[['Temperatura (°C)', 'Humedad (%)']])
+    st.area_chart(df_mock['FWI (Índice)'])
+
+
+with col_right:
+    st.warning("⚠️ **Funcionalidad Crítica:** Visualización de Estrés de Vegetación (NDVI) y Detección de Focos de Calor (Copernicus/MODIS).")
+    
+    st.metric(
+        label="Área con Estrés de Vegetación (NDVI < 0.2)",
+        value="1,250 ha",
+        delta="△ 15% (últimas 24h)",
+        delta_color="inverse" # Indica que el aumento es peligroso
+    )
+    
+    st.button("🔍 Ejecutar Análisis Satelital de Última Hora", type="primary")
+
+st.markdown("---")
+st.caption("FireBay v0.1 | Desarrollado para la prevención en Bahía Exploradores. Fuente: Windy Embed, Datos PLACEHOLDER.")

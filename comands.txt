@@ -1,0 +1,6 @@
+# Generar archivo requirements.txt para despliegue
+pip freeze > requirements.txt
+
+# Correr en local la app
+streamlit run firebay.py
+
