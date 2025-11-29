@@ -5,6 +5,8 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta
 import numpy as np
+from PIL import Image
+import os
 
 # ============================================================================
 # CONFIGURACIÓN DE LA PÁGINA
@@ -121,32 +123,32 @@ def generar_datos_historicos(inicio, fin, temp_base=25, hum_base=50):
 
     return datos
 
-def calcular_nivel_riesgo(temp, humedad, ndvi, nbr, temp_threshold, hum_threshold, ndvi_threshold, nbr_threshold):
-    """Calcula el nivel de riesgo basado en los umbrales"""
+def calcular_nivel_riesgo(temp, humedad, ndvi, ndmi, temp_threshold, hum_threshold, ndvi_threshold, ndmi_threshold):
+    """Calcula el nivel de riesgo basado en los umbrales configurables"""
     puntos = 0
 
-    # Temperatura
+    # Temperatura (mayor temperatura = mayor riesgo)
     if temp > temp_threshold:
         puntos += 25
     elif temp > temp_threshold - 5:
         puntos += 15
 
-    # Humedad (invertido: baja humedad = más riesgo)
+    # Humedad (menor humedad = mayor riesgo)
     if humedad < hum_threshold:
         puntos += 25
     elif humedad < hum_threshold + 10:
         puntos += 15
 
-    # NDVI (bajo = más riesgo)
+    # NDVI (menor vegetación = mayor riesgo)
     if ndvi < ndvi_threshold:
         puntos += 25
     elif ndvi < ndvi_threshold + 0.15:
         puntos += 15
 
-    # NBR (bajo = más riesgo)
-    if nbr < nbr_threshold:
+    # NDMI (menor humedad en vegetación = mayor riesgo)
+    if ndmi < ndmi_threshold:
         puntos += 25
-    elif nbr < nbr_threshold + 0.1:
+    elif ndmi < ndmi_threshold + 0.1:
         puntos += 15
 
     return min(puntos, 100)
@@ -161,7 +163,7 @@ st.markdown('<div class="sub-header">Sistema Inteligente de Prevención y Monito
 # SIDEBAR - PANEL DE CONTROL
 # ============================================================================
 with st.sidebar:
-    st.image("https://via.placeholder.com/300x100/B31B1B/FFFFFF?text=FIREBAY+LOGO", use_container_width=True)
+    st.image("images/Bosque.jpg", use_container_width=True)
 
     st.markdown("---")
 
@@ -169,28 +171,14 @@ with st.sidebar:
 
     st.markdown("#### ⚠️ Umbrales de Alerta")
     umbral_ndvi = st.slider("Umbral NDVI crítico", 0.0, 1.0, 0.3, 0.05, help="Índice de vegetación normalizado (valores bajos = alerta)")
-    umbral_nbr = st.slider("Umbral NBR crítico", -1.0, 1.0, 0.1, 0.05, help="Índice de severidad de quemado (valores altos = alerta de quema)")
+    umbral_ndmi = st.slider("Umbral NDMI crítico", -1.0, 1.0, 0.1, 0.05, help="Índice de humedad de la vegetación (valores bajos = mayor estrés hídrico)")
+    umbral_mirbi = st.slider("Umbral MIRBI crítico", 0.0, 1.0, 0.3, 0.05, help="Índice de áreas quemadas (valores altos = alerta)")
 
     col_temp, col_hum = st.columns(2)
     with col_temp:
         umbral_temperatura = st.slider("Temp. Crítica (°C)", 25, 45, 35, 1)
     with col_hum:
         umbral_humedad = st.slider("Hum. Crítica (%)", 10, 50, 25, 5)
-
-    st.markdown("---")
-
-    st.markdown("### 🚀 Acciones Rápidas")
-
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        if st.button("🔄 Actualizar", use_container_width=True):
-            st.rerun()
-    with col_btn2:
-        if st.button("📧 Alertas", use_container_width=True):
-            st.toast("Alertas enviadas", icon="✅")
-
-    if st.button("📊 Generar Reporte", use_container_width=True, type="secondary"):
-        st.toast("Generando reporte...", icon="📄")
 
 # ============================================================================
 # CÁLCULOS DINÁMICOS BASADOS EN UMBRALES
@@ -200,15 +188,16 @@ with st.sidebar:
 temp_actual = 32
 humedad_actual = 28
 ndvi_actual = 0.45
-nbr_actual = 0.15
+ndmi_actual = 0.15
+mirbi_actual = 0.38
 
 # Calcular riesgo dinámicamente
 riesgo_calculado = calcular_nivel_riesgo(
-    temp_actual, humedad_actual, ndvi_actual, nbr_actual,
-    umbral_temperatura, umbral_humedad, umbral_ndvi, umbral_nbr
+    temp_actual, humedad_actual, ndvi_actual, ndmi_actual,
+    umbral_temperatura, umbral_humedad, umbral_ndvi, umbral_ndmi
 )
 
-# Determinar nivel de riesgo
+# Determinar nivel de riesgo basado en el cálculo
 if riesgo_calculado >= 75:
     nivel_riesgo = "CRÍTICO"
     color_riesgo = "🔥"
@@ -222,16 +211,30 @@ else:
     nivel_riesgo = "BAJO"
     color_riesgo = "✅"
 
-# Calcular alertas activas
+# Calcular alertas activas comparando con umbrales
 alertas_activas = 0
+alertas_detalle = []
+
 if temp_actual > umbral_temperatura:
     alertas_activas += 1
+    alertas_detalle.append(f"🌡️ Temperatura: {temp_actual}°C > {umbral_temperatura}°C")
+
 if humedad_actual < umbral_humedad:
     alertas_activas += 1
+    alertas_detalle.append(f"💧 Humedad: {humedad_actual}% < {umbral_humedad}%")
+
 if ndvi_actual < umbral_ndvi:
     alertas_activas += 1
-if nbr_actual < umbral_nbr:
+    alertas_detalle.append(f"🌿 NDVI: {ndvi_actual:.2f} < {umbral_ndvi:.2f}")
+
+if ndmi_actual < umbral_ndmi:
     alertas_activas += 1
+    alertas_detalle.append(f"💦 NDMI: {ndmi_actual:.2f} < {umbral_ndmi:.2f}")
+
+if mirbi_actual > umbral_mirbi:
+    alertas_activas += 1
+    alertas_detalle.append(f"🔥 MIRBI: {mirbi_actual:.2f} > {umbral_mirbi:.2f}")
+
 
 # ============================================================================
 # DASHBOARD PRINCIPAL - MÉTRICAS CLAVE
@@ -299,7 +302,7 @@ with col4:
         clase_css="metric-card-alert", 
         label="⚠️ Alertas Activas", 
         value=str(alertas_activas), 
-        delta=f"{alertas_activas}/4 umbrales excedidos"
+        delta=f"{alertas_activas}/5 umbrales excedidos"  # Cambiar de 4 a 5
     )
     render_html(html_card4)
 
@@ -327,40 +330,93 @@ with tab1:
         coordenada_lon = -73.42610705801674
         nivel_zoom = 10
         
-        capa_seleccionada = st.selectbox(
+        # --- Diccionario español → inglés ---
+        capas_mapa = {
+            "Viento": "wind",
+            "Temperatura": "temp",
+            "Nubes": "clouds",
+            "Lluvia": "rain",
+            "Presión": "pressure"
+        }
+
+        # --- Selector visual en español ---
+        capa_es = st.selectbox(
             "Seleccionar capa del mapa (Windy):",
-            ["wind", "temp", "clouds", "rain", "pressure"], 
+            list(capas_mapa.keys()),
             index=0,
             key="windy_layer",
             help="Elige la información meteorológica a visualizar"
         )
+
+        # --- Convertir selección al valor técnico en inglés ---
+        capa_seleccionada = capas_mapa[capa_es]
 
         iframe, url = generar_mapa_windy(coordenada_lat, coordenada_lon, nivel_zoom, capa_seleccionada)
         render_html(iframe, height=620)
 
     with col2:
         st.markdown("#### 📍 Detalles de la Zona")
-        st.markdown(f"""
-        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 8px;">
-            <strong>Región:<strong> Aysén 🇨🇱 <br>
-            <strong>Zona:<strong> Bahía Exploradores <br><br>
-            <strong>Coordenadas:<strong> <br>
-            - Lat: {coordenada_lat:.4f} <br>
-            - Lon: {coordenada_lon:.4f} <br>
-            <strong>Capa Activa:<strong> {capa_seleccionada.upper()}
-        </div>
-        """, unsafe_allow_html=True)
 
-        st.markdown("#### 🌬️ Datos Meteorológicos")
-        st.metric("Velocidad del Viento", "15 km/h", "↗️")
-        st.metric("Dirección", "SO", "")
-        st.metric("Presión Atmosférica", "1013 hPa", "↓")
+        st.metric(
+            label="📍 Latitud",
+            value=f"{coordenada_lat:.4f}°",
+            delta="Sur"
+        )
+
+        st.metric(
+            label="📍 Longitud", 
+            value=f"{coordenada_lon:.4f}°",
+            delta="Oeste"
+        )
+
+        st.metric(
+            label="🗺️ Capa Activa",
+            value=capa_es.upper()
+        )
+
+        # Información adicional en expander
+        with st.expander("ℹ️ Información de la Región"):
+            st.markdown("""
+            **Región de Aysén del General Carlos Ibáñez del Campo**
+            
+            - 🏔️ Patagonia chilena
+            - 🌊 Bahía Exploradores: zona costera glaciar
+            - 🌲 Rica biodiversidad y ecosistemas únicos
+            - ❄️ Clima frío oceánico
+            """)
+
 
         st.markdown("#### 🔔 Alertas Locales")
+        alertas_mostradas = 0
+        
+        # Alerta de Temperatura
         if temp_actual > umbral_temperatura:
-            st.error(f"🌡️ Temperatura sobre {umbral_temperatura}°C")
+            st.error(f"🌡️ Temperatura sobre {umbral_temperatura}°C (Actual: {temp_actual}°C)")
+            alertas_mostradas += 1
+        
+        # Alerta de Humedad
         if humedad_actual < umbral_humedad:
-            st.error(f"💧 Humedad bajo {umbral_humedad}%")
+            st.error(f"💧 Humedad bajo {umbral_humedad}% (Actual: {humedad_actual}%)")
+            alertas_mostradas += 1
+        
+        # Alerta de NDVI
+        if ndvi_actual < umbral_ndvi:
+            st.error(f"🌿 NDVI bajo {umbral_ndvi:.2f} (Actual: {ndvi_actual:.2f})")
+            alertas_mostradas += 1
+        
+        # Alerta de NDMI
+        if ndmi_actual < umbral_ndmi:
+            st.error(f"💦 NDMI bajo {umbral_ndmi:.2f} (Actual: {ndmi_actual:.2f})")
+            alertas_mostradas += 1
+        
+        # Alerta de MIRBI
+        if mirbi_actual > umbral_mirbi:
+            st.error(f"🔥 MIRBI sobre {umbral_mirbi:.2f} (Actual: {mirbi_actual:.2f})")
+            alertas_mostradas += 1
+        
+        # Mensaje si no hay alertas
+        if alertas_mostradas == 0:
+            st.success("✅ Sin alertas activas")
 
 # ============================================================================
 # TAB 2: ANÁLISIS SATELITAL
@@ -368,29 +424,75 @@ with tab1:
 with tab2:
     st.markdown("### 🛰️ Análisis de Imágenes Satelitales Copernicus")
 
-    col1, col2 = st.columns(2)
+    # Descripción
+    st.write("""
+    Selecciona una fecha para visualizar los índices satelitales NDVI, NDMI y MIRBI 
+    correspondientes a ese período de captura.
+    """)
 
-    with col1:
-        st.markdown("#### 📸 Imagen RGB - Color Real")
-        st.image("https://via.placeholder.com/600x400/1a1a2e/ffffff?text=Imagen+RGB+Sentinel-2", 
-                  caption=f"Sentinel-2", 
-                  use_container_width=True)
+    # Diccionario con las fechas y sus rutas
+    fechas_disponibles = {
+        "19 de junio de 2023": "images/19-06-2023",
+        "9 de febrero de 2024": "images/09-02-2024",
+        "25 de diciembre de 2024": "images/25-12-2024"
+    }
 
-        if ndvi_actual < umbral_ndvi:
-            st.error(f"⚠️ NDVI actual ({ndvi_actual:.2f}) está bajo el umbral crítico ({umbral_ndvi:.2f})")
-        else:
-            st.success(f"✅ NDVI actual ({ndvi_actual:.2f}) dentro de rangos normales")
+    # Selector de fecha
+    fecha_seleccionada = st.selectbox(
+        "Seleccione una fecha de captura:",
+        list(fechas_disponibles.keys()),
+        index=1  # Por defecto selecciona la segunda opción (9 de febrero de 2024)
+    )
 
-    with col2:
-        st.markdown("#### 🔥 Mapa de Calor - Detección Térmica")
-        st.image("https://via.placeholder.com/600x400/2d1b00/ff6600?text=Mapa+Termico+IR", 
-                  caption=f"Análisis Térmico", 
-                  use_container_width=True)
+    # Obtener la ruta base según la fecha seleccionada
+    ruta_base = fechas_disponibles[fecha_seleccionada]
 
-        if nbr_actual < umbral_nbr:
-            st.error(f"⚠️ NBR actual ({nbr_actual:.2f}) indica condiciones críticas")
-        else:
-            st.info(f"NBR actual: {nbr_actual:.2f}")
+    st.divider()
+
+    # Mostrar las tres imágenes
+    st.subheader(f"Imágenes satelitales del {fecha_seleccionada}")
+
+    # Definir las imágenes y sus descripciones
+    indices = {
+        "NDVI": {
+            "nombre": "NDVI (Índice de Vegetación de Diferencia Normalizada)",
+            "descripcion": "Mide la salud y densidad de la vegetación"
+        },
+        "NDMI": {
+            "nombre": "NDMI (Índice de Humedad de Diferencia Normalizada)",
+            "descripcion": "Evalúa el contenido de humedad en la vegetación"
+        },
+        "MIRBI": {
+            "nombre": "MIRBI (Índice de Brillo Rojo Medio Infrarrojo)",
+            "descripcion": "Detecta áreas quemadas y cambios en la superficie"
+        }
+    }
+
+    # Crear tres columnas para mostrar las imágenes
+    col1, col2, col3 = st.columns(3)
+
+    columnas = [col1, col2, col3]
+    nombres_archivos = ["NDVI.png", "NDMI.png", "MIRBI.png"]
+
+    # Mostrar cada imagen en su columna correspondiente
+    for i, (col, nombre_archivo) in enumerate(zip(columnas, nombres_archivos)):
+        indice_nombre = nombre_archivo.replace(".png", "")
+        ruta_imagen = os.path.join(ruta_base, nombre_archivo)
+        
+        with col:
+            st.markdown(f"**{indices[indice_nombre]['nombre']}**")
+            
+            # Verificar si la imagen existe
+            if os.path.exists(ruta_imagen):
+                try:
+                    imagen = Image.open(ruta_imagen)
+                    st.image(imagen, use_container_width=True)
+                    st.caption(indices[indice_nombre]['descripcion'])
+                except Exception as e:
+                    st.error(f"Error al cargar la imagen: {str(e)}")
+            else:
+                st.warning(f"Imagen no encontrada en: {ruta_imagen}")
+
 
 # ============================================================================
 # TAB 3: ÍNDICES Y MÉTRICAS
@@ -398,8 +500,13 @@ with tab2:
 with tab3:
     st.markdown("### 📈 Resumen de Índices de Riesgo Satelital")
 
-    # Generar estados dinámicamente
+    # Función para obtener estado dinámicamente
     def obtener_estado(valor, umbral, invertido=False):
+        """
+        Determina el estado de un índice comparándolo con su umbral
+        invertido=True: valores bajos son malos (NDVI, NDMI)
+        invertido=False: valores altos son malos (MIRBI)
+        """
         if invertido:  # Para índices donde bajo es malo
             if valor < umbral:
                 return '🔥 Crítico'
@@ -415,23 +522,20 @@ with tab3:
             else:
                 return '✅ Normal'
 
+    # Tabla de índices con valores dinámicos
     indices_data = {
-        'Índice': ['NDVI', 'NBR', 'NDMI', 'EVI', 'SAVI'],
-        'Valor Actual': [ndvi_actual, nbr_actual, 0.38, 0.52, 0.41],
-        'Umbral': [umbral_ndvi, umbral_nbr, 0.30, 0.40, 0.35],
+        'Índice': ['NDVI', 'NDMI', 'MIRBI'],
+        'Valor Actual': [ndvi_actual, ndmi_actual, mirbi_actual],
+        'Umbral': [umbral_ndvi, umbral_ndmi, umbral_mirbi],
         'Estado': [
             obtener_estado(ndvi_actual, umbral_ndvi, invertido=True),
-            obtener_estado(nbr_actual, umbral_nbr, invertido=True),
-            obtener_estado(0.38, 0.30, invertido=True),
-            '✅ Normal',
-            '⚠️ Alerta'
+            obtener_estado(ndmi_actual, umbral_ndmi, invertido=True),
+            obtener_estado(mirbi_actual, umbral_mirbi, invertido=False)
         ],
         'Descripción': [
-            'Índice de Vegetación Normalizada (Estrés)',
-            'Índice de Severidad de Quemado',
-            'Índice de Humedad Normalizada',
-            'Índice de Vegetación Mejorado',
-            'Índice Ajustado al Suelo'
+            'Índice de Vegetación Normalizada',
+            'Índice de Humedad de la Vegetación',
+            'Índice de Brillo Rojo Medio Infrarrojo'
         ]
     }
 
@@ -445,7 +549,7 @@ with tab3:
             "Valor Actual": st.column_config.ProgressColumn(
                 "Valor Actual",
                 format="%.2f",
-                min_value=0,
+                min_value=-1,
                 max_value=1,
             ),
             "Umbral": st.column_config.NumberColumn(
@@ -461,31 +565,45 @@ with tab3:
 
     with col1:
         st.markdown("#### 📊 Valores Actuales vs Umbrales")
+        
+        # Gráfico dinámico que se actualiza con los sliders
         fig = go.Figure()
+        
+        # Barras con valores actuales
         fig.add_trace(go.Bar(
             name='Valor Actual',
             x=df_indices['Índice'],
             y=df_indices['Valor Actual'],
-            marker_color='#B31B1B'
+            marker_color='#B31B1B',
+            text=df_indices['Valor Actual'].round(2),
+            textposition='outside'
         ))
+        
+        # Línea de umbrales (dinámicos desde los sliders)
         fig.add_trace(go.Scatter(
             name='Umbral Crítico',
             x=df_indices['Índice'],
             y=df_indices['Umbral'],
             mode='markers+lines',
             marker=dict(size=12, symbol='line-ew', color='#FFD700', line=dict(width=3)),
-            line=dict(dash='dash', width=2, color='#FFD700')
+            line=dict(dash='dash', width=2, color='#FFD700'),
+            text=df_indices['Umbral'].round(2),
+            textposition='top center'
         ))
+        
         fig.update_layout(
             height=400,
             showlegend=True,
             hovermode='x unified',
-            margin=dict(t=20, b=20, l=20, r=20)
+            margin=dict(t=40, b=20, l=20, r=20),
+            yaxis=dict(range=[-0.2, 1.2], title="Valor del Índice")
         )
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
         st.markdown("#### 🎯 Distribución de Estados")
+        
+        # Gráfico de dona dinámico
         estados_count = df_indices['Estado'].value_counts()
         fig = px.pie(
             values=estados_count.values,
@@ -498,11 +616,18 @@ with tab3:
                 '✅ Normal': '#00CC96'
             }
         )
+        fig.update_traces(
+            textposition='inside',
+            textinfo='percent+label',
+            textfont_size=14
+        )
         fig.update_layout(
             height=400,
-            margin=dict(t=20, b=20, l=20, r=20)
+            margin=dict(t=20, b=20, l=20, r=20),
+            showlegend=False
         )
         st.plotly_chart(fig, use_container_width=True)
+
 
 # ============================================================================
 # FOOTER
